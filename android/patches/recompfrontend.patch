@@ -41,21 +41,23 @@ index b9c5458..8eb55ef 100644
  elseif (APPLE OR CMAKE_SYSTEM_NAME MATCHES "Linux")
      target_include_directories(recompui PRIVATE ${SDL2_INCLUDE_DIRS})
 diff --git a/recompui/src/renderer/rt64_render_context.cpp b/recompui/src/renderer/rt64_render_context.cpp
-index a7954c7..d0fbc20 100644
+index a7954c7..28a8da0 100644
 --- a/recompui/src/renderer/rt64_render_context.cpp
 +++ b/recompui/src/renderer/rt64_render_context.cpp
-@@ -1,3 +1,10 @@
+@@ -1,3 +1,12 @@
 +#if defined(__ANDROID__)
 +#include <SDL.h>
 +#include <SDL_syswm.h>
 +#include <android/native_window.h>
 +#include "android_support.h"
 +#include "android_window_handoff.h"
++#include "android_rt64_storage.h"
++#include "util/file.h"
 +#endif
  #include <memory>
  #include <cstring>
  #include <variant>
-@@ -225,7 +232,14 @@ renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::Window
+@@ -225,7 +234,14 @@ renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::Window
      RT64::Application::Core appCore{};
  #if defined(_WIN32)
      appCore.window = window_handle.window;
@@ -71,7 +73,17 @@ index a7954c7..d0fbc20 100644
      appCore.window = window_handle;
  #elif defined(__APPLE__)
      appCore.window.window = window_handle.window;
-@@ -356,6 +370,11 @@ void renderer::RT64Context::send_dummy_workload(uint32_t fb_address) {
+@@ -269,6 +285,9 @@ renderer::RT64Context::RT64Context(uint8_t* rdram, ultramodern::renderer::Window
+     // Set up the RT64 application configuration fields.
+     RT64::ApplicationConfiguration appConfig;
+     appConfig.useConfigurationFile = false;
++#if defined(__ANDROID__)
++    bmhero::android::configure_rt64_storage(appConfig, recompui::file::get_app_folder_path());
++#endif
+ 
+     // Create the RT64 application.
+     app = std::make_unique<RT64::Application>(appCore, appConfig);
+@@ -356,6 +375,11 @@ void renderer::RT64Context::send_dummy_workload(uint32_t fb_address) {
  }
  
  void renderer::RT64Context::update_screen() {

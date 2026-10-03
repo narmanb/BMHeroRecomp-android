@@ -9,6 +9,18 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 class AndroidHostTests(unittest.TestCase):
+    def test_rt64_log_stays_inside_app_storage(self):
+        compiler = shutil.which('g++')
+        if not compiler:
+            self.skipTest('requires a host C++ compiler')
+        with tempfile.TemporaryDirectory() as directory:
+            binary = str(Path(directory) / 'rt64-storage-test')
+            subprocess.run([compiler, '-std=c++17', '-I'+str(ROOT/'include'),
+                '-I'+str(ROOT/'lib/rt64/src'), str(ROOT/'tests/test_rt64_storage.cpp'),
+                str(ROOT/'lib/rt64/src/common/rt64_user_paths.cpp'), '-o', binary], check=True)
+            result = subprocess.run([binary, str(Path(directory) / 'app-files')], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_diagnostics_survive_process_death_and_bound_report_size(self):
         javac = os.environ.get('BMHERO_JAVAC') or shutil.which('javac')
         java = shutil.which('java')

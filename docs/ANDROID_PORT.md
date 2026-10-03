@@ -1,6 +1,6 @@
 # Bomberman Hero Android port
 
-## Status — test 1 startup crash reported; test 2 collects evidence
+## Status — test 3 corrects the reported RT64 storage crash
 
 Target: Retroid Pocket 5, Android 13, arm64-v8a, physical controller,
 landscape, interpolated 60 FPS. Performance must be measured on the device.
@@ -27,7 +27,7 @@ ROM import accepts ZIP or raw US 1.0 dumps, normalizes all three byte orders,
 and verifies SHA-1 before replacing the imported ROM. UI assets and the
 controller database are packaged; the ROM is excluded. Minimum Android API 28.
 The user reports that test 1 immediately crashes on the RP5 before reaching
-the native ROM menu. The root cause is not established yet. Test 2 moves ROM
+the native ROM menu. Test 2 moves ROM
 import to an Android launcher that does not load native libraries. The game
 activity runs in a separate `:game` process so the launcher can remain usable
 after a native crash. It imports the verified dump to `bmhero.z64`, matching
@@ -40,8 +40,17 @@ native tombstone protobuf or ANR trace. Android can discard system traces;
 availability is not guaranteed. Copy/View crash report also work without a PC.
 Reports remain local until the user copies or exports them.
 
+The RP5 test 2 report confirms that ROM import works and startup reaches RT64
+initialization, then aborts with an uncaught `filesystem_error` trying to create
+`/data/.rt64` (permission denied). RT64's default desktop data-path detection
+overrides its storage path before opening its log, even when configuration-file
+use is disabled. Test 3 disables that detection on Android and explicitly places
+RT64 data/logs in `getFilesDir()/bmhero/rt64`. A host regression using RT64's real
+UserPaths implementation first reproduced the escaped path, then verified that
+the renderer log is created inside the app directory after the correction.
+
 The app uses system Vulkan. Optional Turnip integration is not implemented
-yet. Test 2 has not been run on the RP5; no successful rendering, controller,
+yet. Test 3 still needs RP5 verification; no successful rendering, controller,
 save, suspend/resume or performance result is claimed.
 
 ## Audited dependency differences

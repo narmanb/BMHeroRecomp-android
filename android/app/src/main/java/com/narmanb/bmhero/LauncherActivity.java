@@ -41,7 +41,7 @@ public final class LauncherActivity extends Activity {
         scroll.addView(layout);
         setContentView(scroll);
         TextView title = new TextView(this);
-        title.setText("Bomberman Hero — test 2"); title.setTextSize(24);
+        title.setText("Bomberman Hero — test 3"); title.setTextSize(24);
         layout.addView(title);
         status = new TextView(this); status.setTextSize(16); layout.addView(status);
         pick = button(layout, "Select USA ROM or ZIP", () -> {
@@ -86,7 +86,7 @@ public final class LauncherActivity extends Activity {
         super.onResume();
         copy.setEnabled(false); save.setEnabled(false);
         io.execute(() -> {
-            StringBuilder text = new StringBuilder("Bomberman Hero 0.7.3-android.2\n");
+            StringBuilder text = new StringBuilder("Bomberman Hero 0.7.3-android.3\n");
             text.append(Build.MANUFACTURER).append(' ').append(Build.MODEL)
                 .append(" Android ").append(Build.VERSION.RELEASE).append(" API ").append(Build.VERSION.SDK_INT).append('\n');
             text.append(new DiagnosticFiles(data).report());
