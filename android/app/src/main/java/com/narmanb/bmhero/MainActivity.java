@@ -16,28 +16,43 @@ public class MainActivity extends SDLActivity {
     private boolean multiple;
     private File data;
     private String startupFailure;
+    private DiagnosticFiles diagnostics;
     private native void nativeInit(String path);
     private native void nativeDocumentResult(boolean success, String[] paths);
     @Override protected String[] getLibraries() { return new String[]{"c++_shared", "SDL2", "BMHero"}; }
     @Override public void loadLibraries() {
         if (startupFailure != null) throw new IllegalStateException(startupFailure);
-        super.loadLibraries();
+        for (String library : getLibraries()) {
+            if (diagnostics != null) diagnostics.stage("Loading " + library);
+            System.loadLibrary(library);
+        }
     }
     @Override protected void onCreate(Bundle state) {
         data = new File(getFilesDir(), "bmhero");
+        diagnostics = new DiagnosticFiles(data);
+        Thread.UncaughtExceptionHandler previous = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, error) -> {
+            diagnostics.failure(error);
+            if (previous != null) previous.uncaughtException(thread, error);
+            else android.os.Process.killProcess(android.os.Process.myPid());
+        });
         try {
+            diagnostics.stage("Extracting assets");
             if (!data.isDirectory() && !data.mkdirs()) throw new IOException("Cannot create app storage");
             installAssets("assets", new File(data,"assets"));
             installAssets("recompcontrollerdb.txt", new File(data,"recompcontrollerdb.txt"));
             loadLibraries();
+            diagnostics.stage("Calling nativeInit");
             nativeInit(data.getAbsolutePath());
         } catch (Exception | UnsatisfiedLinkError e) {
             // SDLActivity must receive onCreate, but its broken-library flow
             // must prevent surface/native-thread creation after an asset failure.
             startupFailure = "Startup failed: " + e.getMessage();
+            diagnostics.failure(e);
             super.onCreate(state);
             return;
         }
+        diagnostics.stage("Creating SDL surface");
         super.onCreate(state);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN |
             View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
@@ -103,5 +118,9 @@ public class MainActivity extends SDLActivity {
         } catch(IOException e) {dest.delete();dir.delete();throw e;}
         return dest;
     }
-    @Override protected void onDestroy() { io.shutdownNow();super.onDestroy(); }
+    @Override protected void onDestroy() {
+        io.shutdownNow(); super.onDestroy();
+        // The runtime is initialized once per process; the launcher survives.
+        if (isFinishing()) android.os.Process.killProcess(android.os.Process.myPid());
+    }
 }

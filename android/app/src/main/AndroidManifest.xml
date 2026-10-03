@@ -2,8 +2,9 @@
     <uses-feature android:name="android.hardware.vulkan.level" android:version="0" android:required="true" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
     <application android:label="Bomberman Hero" android:theme="@android:style/Theme.Material.NoActionBar" android:allowBackup="false" android:hasCode="true">
-        <activity android:name=".MainActivity" android:screenOrientation="sensorLandscape" android:exported="true" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize|navigation|density" android:launchMode="singleTask">
+        <activity android:name=".LauncherActivity" android:screenOrientation="sensorLandscape" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
+        <activity android:name=".MainActivity" android:process=":game" android:screenOrientation="sensorLandscape" android:exported="false" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize|navigation|density" android:launchMode="singleTask" />
     </application>
 </manifest>

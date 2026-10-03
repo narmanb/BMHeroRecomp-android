@@ -1,6 +1,6 @@
 # Bomberman Hero Android port
 
-## Status — first ARM64 test APK, device testing pending
+## Status — test 1 startup crash reported; test 2 collects evidence
 
 Target: Retroid Pocket 5, Android 13, arm64-v8a, physical controller,
 landscape, interpolated 60 FPS. Performance must be measured on the device.
@@ -26,9 +26,23 @@ An ARM64 native build and an installable debug-signed test APK have been built.
 ROM import accepts ZIP or raw US 1.0 dumps, normalizes all three byte orders,
 and verifies SHA-1 before replacing the imported ROM. UI assets and the
 controller database are packaged; the ROM is excluded. Minimum Android API 28.
-The app uses system Vulkan in this first build. Optional Turnip integration
-is not implemented yet. No device launch, rendering, controller, save,
-suspend/resume or performance result is claimed.
+The user reports that test 1 immediately crashes on the RP5 before reaching
+the native ROM menu. The root cause is not established yet. Test 2 moves ROM
+import to an Android launcher that does not load native libraries. The game
+activity runs in a separate `:game` process so the launcher can remain usable
+after a native crash. It imports the verified dump to `bmhero.z64`, matching
+the runtime's stored ROM name and XXH3 hash.
+
+After a failed Start, reopen the app and choose **Save crash report**. The ZIP
+contains persisted launch checkpoints, native stdout/stderr, Java exceptions
+when available, Android process exit descriptions, and the newest available
+native tombstone protobuf or ANR trace. Android can discard system traces;
+availability is not guaranteed. Copy/View crash report also work without a PC.
+Reports remain local until the user copies or exports them.
+
+The app uses system Vulkan. Optional Turnip integration is not implemented
+yet. Test 2 has not been run on the RP5; no successful rendering, controller,
+save, suspend/resume or performance result is claimed.
 
 ## Audited dependency differences
 

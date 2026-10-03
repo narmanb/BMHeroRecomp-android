@@ -8,6 +8,8 @@
 #include <mutex>
 #include <cstdlib>
 #include <stdexcept>
+#include <cstdio>
+#include <string>
 
 namespace {
     JavaVM* vm = nullptr;
@@ -38,7 +40,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_narmanb_bmhero_MainActivity_nativeIni
     const char* dir = env->GetStringUTFChars(path, nullptr);
     SDL_setenv("APP_FOLDER_PATH", dir, 1);
     SDL_setenv("BMHERO_ASSET_PATH", dir, 1);
+    const std::string log_path = std::string(dir) + "/native-startup.log";
+    if (freopen(log_path.c_str(), "a", stdout)) setvbuf(stdout, nullptr, _IONBF, 0);
+    if (freopen(log_path.c_str(), "a", stderr)) setvbuf(stderr, nullptr, _IONBF, 0);
     env->ReleaseStringUTFChars(path, dir);
+    bmhero::android::startup_stage("nativeInit complete");
 }
 extern "C" JNIEXPORT void JNICALL Java_com_narmanb_bmhero_MainActivity_nativeDocumentResult(JNIEnv* env, jobject, jboolean ok, jobjectArray paths) {
     std::lock_guard lock(document_mutex);
@@ -51,7 +57,18 @@ extern "C" JNIEXPORT void JNICALL Java_com_narmanb_bmhero_MainActivity_nativeDoc
     }
     success=ok;ready=true;
 }
+void bmhero::android::startup_stage(const char* stage) {
+    __android_log_print(ANDROID_LOG_INFO, "BMHero", "%s", stage);
+    const char* dir = std::getenv("APP_FOLDER_PATH");
+    if (!dir) return;
+    const std::string path = std::string(dir) + "/startup-stage.txt";
+    if (FILE* file = fopen(path.c_str(), "a")) {
+        fprintf(file, "Native: %s\n", stage);
+        fclose(file);
+    }
+}
 void bmhero::android::initialize() {
+    startup_stage("SDL_main entered");
     const char* dir=std::getenv("APP_FOLDER_PATH");
     if (!dir || !*dir) throw std::runtime_error("Android app path missing");
     std::filesystem::current_path(dir);

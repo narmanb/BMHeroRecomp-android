@@ -86,6 +86,7 @@ void exit_error(const char* str, Ts ...args) {
 
 ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
 #if defined(__ANDROID__)
+    bmhero::android::startup_stage("Initializing SDL video and controllers");
     SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
 #endif
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
@@ -170,6 +171,9 @@ bool SetImageAsIcon(const char* filename, SDL_Window* window)
 SDL_Window* window;
 
 ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::gfx_data_t) {
+#if defined(__ANDROID__)
+    bmhero::android::startup_stage("Creating SDL Vulkan window");
+#endif
     uint32_t flags = SDL_WINDOW_RESIZABLE;
 
 #if defined(__APPLE__)
@@ -709,6 +713,9 @@ int main(int argc, char** argv) {
     recompui::programconfig::set_program_id(banjo::program_id);
     
     // Initialize SDL audio and set the output frequency.
+#if defined(__ANDROID__)
+    bmhero::android::startup_stage("Initializing SDL audio");
+#endif
     SDL_InitSubSystem(SDL_INIT_AUDIO);
     if (!reset_audio(48000)) {
         // It is not possible to initialize without an audio device.
@@ -729,6 +736,9 @@ int main(int argc, char** argv) {
     recompui::register_extra_font("NimbusSansNarrow-Bold.ttf");
 
     // Register configuration path.
+#if defined(__ANDROID__)
+    bmhero::android::startup_stage("Registering game and configuration");
+#endif
     recomp::register_config_path(recompui::file::get_app_folder_path());
 
     // Register supported games and patches
@@ -762,6 +772,9 @@ int main(int argc, char** argv) {
     recompinput::players::set_single_player_mode(true);
 
     banjo::init_config();
+#if defined(__ANDROID__)
+    bmhero::android::startup_stage("Configuration ready");
+#endif
 
     recompui::register_launcher_init_callback(on_launcher_init);
     recompui::register_launcher_update_callback(banjo::launcher_animation_update);
@@ -772,8 +785,15 @@ int main(int argc, char** argv) {
 
     ultramodern::renderer::callbacks_t renderer_callbacks{
         .create_render_context = [](uint8_t* rdram, ultramodern::renderer::WindowHandle window_handle, bool developer_mode) {
+#if defined(__ANDROID__)
+            bmhero::android::startup_stage("Initializing RT64 Vulkan renderer");
+#endif
             auto presentation_mode = ultramodern::renderer::PresentationMode::PresentEarly;
-            return recompui::renderer::create_render_context(rdram, window_handle, presentation_mode, developer_mode);
+            auto context = recompui::renderer::create_render_context(rdram, window_handle, presentation_mode, developer_mode);
+#if defined(__ANDROID__)
+            bmhero::android::startup_stage("RT64 initialization returned");
+#endif
+            return context;
         },
     };
 
@@ -822,6 +842,9 @@ int main(int argc, char** argv) {
     // Register the .rtz texture pack file format with the previous content type as its only allowed content type.
     recomp::mods::register_mod_container_type("rtz", std::vector{ texture_pack_content_type_id }, false);
 
+#if defined(__ANDROID__)
+    bmhero::android::startup_stage("Starting recompiled runtime");
+#endif
     recomp::start(
         project_version,
         {},
