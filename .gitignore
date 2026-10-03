@@ -74,6 +74,16 @@ node_modules/
 # Recompiler Linux binary
 N64Recomp
 RSPRecomp
+build-host-tools/
+N64RecompSource/
+bmhero.z64.tmp
+__pycache__/
+android/.gradle/
+android/local.properties
+android/**/build/
+android/**/.cxx/
+*.keystore
+keystore.properties
 .DS_Store
 
 # Controller mappings file

@@ -13,9 +13,14 @@
 #include "ultramodern/ultra64.h"
 #include "ultramodern/ultramodern.hpp"
 #include "ultramodern/config.hpp"
+#if !defined(__ANDROID__)
 #define SDL_MAIN_HANDLED
-#ifdef _WIN32
+#endif
+#if defined(_WIN32) || defined(__ANDROID__)
 #include "SDL.h"
+#if defined(__ANDROID__)
+#include "SDL_syswm.h"
+#endif
 #else
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_syswm.h"
@@ -181,7 +186,7 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
     bool choose_kazooie_icon = (rand() % 2 == 0);
     HICON new_icon = LoadIcon(GetModuleHandle(NULL), choose_kazooie_icon ? MAKEINTRESOURCE(APP_ICON_K) : MAKEINTRESOURCE(APP_ICON_B));
     SendMessage(wmInfo.info.win.window, WM_SETICON, ICON_SMALL2, (LPARAM)(new_icon));
-#elif defined(__linux__)
+#elif defined(__linux__) && !defined(__ANDROID__)
     SetImageAsIcon("icons/app.png", window);
 #endif
 
@@ -606,7 +611,12 @@ void on_launcher_init(recompui::LauncherMenu *menu) {
 
 #define REGISTER_FUNC(name) recomp::overlays::register_base_export(#name, name)
 
+#if defined(__ANDROID__)
+// SDLActivity resolves this exported symbol in the app's native shared library.
+extern "C" int SDL_main(int argc, char** argv) {
+#else
 int main(int argc, char** argv) {
+#endif
     (void)argc;
     (void)argv;
     recomp::Version project_version{};

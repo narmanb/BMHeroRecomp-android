@@ -12,6 +12,29 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # set(CMAKE_CXX_VISIBILITY_PRESET hidden)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+if (ANDROID)
+    # Every static dependency linked into the SDLActivity shared library needs PIC.
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    # Code generation runs on the host before Gradle/NDK compilation.
+    foreach(generated_file
+        RecompiledFuncs/recomp_overlays.inl
+        RecompiledPatches/patches.c
+        RecompiledPatches/patches_bin.c
+        rsp/n_aspMain.cpp)
+        if (NOT EXISTS "${CMAKE_SOURCE_DIR}/${generated_file}")
+            message(FATAL_ERROR "Missing ${generated_file}. Run tools/prepare_sources.py with your US 1.0 ROM first.")
+        endif()
+    endforeach()
+    set(BMHERO_FILE_TO_C "" CACHE FILEPATH "Host-built file_to_c for Android cross compilation")
+    if (NOT EXISTS "${BMHERO_FILE_TO_C}")
+        message(FATAL_ERROR "Set BMHERO_FILE_TO_C to the host build-host-tools/file_to_c executable.")
+    endif()
+    set(BMHERO_EMBED_TOOL "${BMHERO_FILE_TO_C}")
+    set(RT64_FILE_TO_C "${BMHERO_FILE_TO_C}")
+else()
+    set(BMHERO_EMBED_TOOL file_to_c)
+endif()
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-everything /W4")
 endif()
@@ -103,7 +126,8 @@ target_sources(PatchesLib PRIVATE
 
 set_source_files_properties(${CMAKE_SOURCE_DIR}/RecompiledPatches/patches.c PROPERTIES COMPILE_FLAGS -fno-strict-aliasing)
 
-# Build patches elf
+# Build patches elf. Android consumes the host-generated sources directly.
+if (NOT ANDROID)
 if(NOT DEFINED PATCHES_C_COMPILER)
     set(PATCHES_C_COMPILER clang)
 endif()
@@ -120,7 +144,7 @@ add_custom_target(PatchesBin
 
 # Generate patches_bin.c from patches.bin
 add_custom_command(OUTPUT ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c
-    COMMAND file_to_c ${CMAKE_SOURCE_DIR}/patches/patches.bin bk_patches_bin ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.h
+    COMMAND ${BMHERO_EMBED_TOOL} ${CMAKE_SOURCE_DIR}/patches/patches.bin bk_patches_bin ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.c ${CMAKE_SOURCE_DIR}/RecompiledPatches/patches_bin.h
     DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.bin
 )
 
@@ -136,8 +160,15 @@ add_custom_command(OUTPUT
                    DEPENDS ${CMAKE_SOURCE_DIR}/patches/patches.elf
 )
 
-# Main executable
-add_executable(BMHeroRecompiled)
+endif()
+
+# SDLActivity loads a shared library on Android; desktop keeps its executable.
+if (ANDROID)
+    add_library(BMHeroRecompiled SHARED)
+    set_target_properties(BMHeroRecompiled PROPERTIES OUTPUT_NAME BMHero)
+else()
+    add_executable(BMHeroRecompiled)
+endif()
 
 set (SOURCES
     ${CMAKE_SOURCE_DIR}/src/main/launcher_animation.cpp
@@ -176,7 +207,7 @@ target_include_directories(BMHeroRecompiled PRIVATE
 
 # Generate icon_bytes.c from the app icon PNG.
 add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
-    COMMAND file_to_c ${CMAKE_SOURCE_DIR}/icons/app.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
+    COMMAND ${BMHERO_EMBED_TOOL} ${CMAKE_SOURCE_DIR}/icons/app.png icon_bytes ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.c ${CMAKE_CURRENT_BINARY_DIR}/icon_bytes.h
     DEPENDS ${CMAKE_SOURCE_DIR}/icons/app.png
 )
 
@@ -358,7 +389,7 @@ foreach(NRM_FILE ${NRM_FILES})
 
     add_custom_command(
         OUTPUT ${OUT_C} ${OUT_H}
-        COMMAND file_to_c ${NRM_FILE} ${NRM_NAME} ${OUT_C} ${OUT_H}
+        COMMAND ${BMHERO_EMBED_TOOL} ${NRM_FILE} ${NRM_NAME} ${OUT_C} ${OUT_H}
         DEPENDS ${NRM_FILE}
     )
 
