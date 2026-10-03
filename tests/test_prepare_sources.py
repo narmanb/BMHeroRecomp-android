@@ -1,5 +1,8 @@
 import importlib.util
+import os
 from pathlib import Path
+import subprocess
+import sys
 import unittest
 
 
@@ -33,6 +36,18 @@ class RomPreparationTests(unittest.TestCase):
     def test_wrong_game_is_rejected_even_with_valid_n64_header(self):
         with self.assertRaisesRegex(ValueError, "US 1.0"):
             self.tool.validate_rom(bytes.fromhex("8037124001020304"))
+
+    @unittest.skipUnless(os.environ.get("BMHERO_TEST_ROM"), "requires a user-provided ROM")
+    def test_check_only_accepts_verified_us_rom_without_writing(self):
+        rom = Path(os.environ["BMHERO_TEST_ROM"]).resolve()
+        before = rom.stat()
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), str(rom), "--check-only"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Verified Bomberman Hero US 1.0 ROM", result.stdout)
+        self.assertEqual(rom.stat().st_mtime_ns, before.st_mtime_ns)
 
 
 if __name__ == "__main__":

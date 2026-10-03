@@ -8,7 +8,11 @@
 #include <stdexcept>
 #include <cinttypes>
 
+#if !defined(__ANDROID__)
 #include "nfd.h"
+#else
+#include "android_support.h"
+#endif
 
 #include "ultramodern/ultra64.h"
 #include "ultramodern/ultramodern.hpp"
@@ -81,6 +85,9 @@ void exit_error(const char* str, Ts ...args) {
 }
 
 ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
+#if defined(__ANDROID__)
+    SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
+#endif
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
     SDL_SetHint(SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS, "0");
     SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, "1");
@@ -167,7 +174,7 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 
 #if defined(__APPLE__)
     flags |= SDL_WINDOW_METAL;
-#elif defined(RT64_SDL_WINDOW_VULKAN)
+#elif defined(__ANDROID__) || defined(RT64_SDL_WINDOW_VULKAN)
     flags |= SDL_WINDOW_VULKAN;
 #endif
 
@@ -204,6 +211,9 @@ ultramodern::renderer::WindowHandle create_window(ultramodern::gfx_callbacks_t::
 
 void update_gfx(void*) {
     recompinput::handle_events();
+#if defined(__ANDROID__)
+    bmhero::android::dispatch_document_result();
+#endif
 }
 
 static SDL_AudioCVT audio_convert;
@@ -617,6 +627,9 @@ extern "C" int SDL_main(int argc, char** argv) {
 #else
 int main(int argc, char** argv) {
 #endif
+#if defined(__ANDROID__)
+    bmhero::android::initialize();
+#endif
     (void)argc;
     (void)argv;
     recomp::Version project_version{};
@@ -687,7 +700,9 @@ int main(int argc, char** argv) {
 #endif
 
     // Initialize native file dialogs.
+#if !defined(__ANDROID__)
     NFD_Init();
+#endif
 
     // Initialize program settings.
     recompui::programconfig::set_program_name(banjo::program_name);
@@ -706,6 +721,9 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to load controller mappings: %s\n", SDL_GetError());
     }
 
+#if defined(__ANDROID__)
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+#endif
     // Register fonts.
     recompui::register_primary_font("InterVariable.ttf", "Inter Variable");
     recompui::register_extra_font("NimbusSansNarrow-Bold.ttf");
@@ -817,7 +835,9 @@ int main(int argc, char** argv) {
         threads_callbacks
     );
 
+#if !defined(__ANDROID__)
     NFD_Quit();
+#endif
 
     if (preloaded) {
         release_preload(preload_context);

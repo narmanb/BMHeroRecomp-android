@@ -1,6 +1,6 @@
 # Bomberman Hero Android port
 
-## Status — initial source preparation, not a playable Android release
+## Status — first ARM64 test APK, device testing pending
 
 Target: Retroid Pocket 5, Android 13, arm64-v8a, physical controller,
 landscape, interpolated 60 FPS. Performance must be measured on the device.
@@ -22,8 +22,13 @@ Implemented so far:
   `SDL_main`; desktop retains its existing executable.
 - Explicit configure-time checks for required generated sources and host tool.
 
-There is **no Gradle application or APK yet**. These changes are the beginning
-of the port, not evidence that its dependencies compile for Android.
+An ARM64 native build and an installable debug-signed test APK have been built.
+ROM import accepts ZIP or raw US 1.0 dumps, normalizes all three byte orders,
+and verifies SHA-1 before replacing the imported ROM. UI assets and the
+controller database are packaged; the ROM is excluded. Minimum Android API 28.
+The app uses system Vulkan in this first build. Optional Turnip integration
+is not implemented yet. No device launch, rendering, controller, save,
+suspend/resume or performance result is claimed.
 
 ## Audited dependency differences
 
@@ -37,39 +42,36 @@ Hero's pinned dependencies:
 | Hero symbols | `37887677d0fba8059e0c3a322e4c9f8b0200a5b4` |
 | Hero decomp headers | `a07c57e1ee9bd20d054a7180017d30f5aa86d70f` |
 
+The Android branch now pins Goemon's RT64 at
+`5bec328c15ab02ab70154d32aa367f3cdb83ab38` with a replayable patch carrying
+Hero's extended rectangle-aspect and view-matrix lighting fixes from upstream
+`30eedd3` and `f647df1`. Its nested Plume pin supplies Android surface ownership
+and stock Adreno shader compatibility changes. Other Hero dependency pins remain.
 Goemon's Android RT64 is `5bec328c15ab02ab70154d32aa367f3cdb83ab38`;
 its runtime is `184283bf222703a49d35115cd5fa35278455a6cb`.
 Goemon keeps frontend code in its main repository; Hero uses RecompFrontend as
 a submodule. Its Android folder cannot simply be copied unchanged.
 
-Remaining integration work:
+Remaining device work:
 
-1. Port Android RT64/Plume build, native-window handling, host shader compiler
-   selection, and SDL dependency setup while checking compatibility with Hero's
-   current frontend renderer API. Keep dependency changes pinned and reproducible.
-2. Adapt RecompFrontend: Android SDL include/link settings, source-built FreeType,
-   app-private paths, and asynchronous Storage Access Framework file selection.
-   The current `recompui/src/util/file.cpp` invokes desktop nativefiledialog and
-   uses Linux home-directory fallbacks that should not be used on Android.
-3. Add Gradle/SDLActivity bootstrap, package `libBMHero.so`, extract the existing
-   UI assets and controller DB, and initialize paths before starting native code.
-4. Add optional libadrenotools/Turnip import and recovery. Do not claim Vulkan
-   1.1 compatibility just from a manifest: verify required RT64 device features.
-5. Test installation, ROM import, title screen, controls, saves, suspend/resume,
-   and gameplay speed before measuring 60 FPS on the RP5.
+1. Test APK installation, ROM import, title screen, physical controls, saves
+   and suspend/resume on the RP5.
+2. Check Vulkan device features and rendering on the RP5 stock driver; add
+   optional libadrenotools/Turnip selection if needed.
+3. Measure gameplay speed and sustained 60 FPS at practical resolutions.
 
 Do not replace Hero's interpolation patches with Goemon-specific game patches.
 
-## Required user input
+## ROM input
 
-An uncompressed **Bomberman Hero US 1.0** ROM, 16 MiB, normalized SHA-1:
+An uncompressed **Bomberman Hero US 1.0** ROM, 12 MiB, normalized SHA-1:
 
 `a36364b7e59351f7551ab351cb3b41ebc4be285b`
 
 Upstream's CI retrieves this from a private repository using secrets which are
 not present in a new fork. Desktop release binaries are not a substitute for
-the missing generated C sources. The ROM is required for local source generation
-and later runtime testing, but must remain out of Git and the APK.
+the missing generated C sources. The uploaded US ROM was verified and used for local generation. The APK asks
+for a ROM again on the device. It must remain out of Git and the APK.
 
 ## Host source generation
 
@@ -102,9 +104,45 @@ python3 -m unittest discover -s tests -v
 The Android reference pins JDK 17, NDK 27.1.12297006, CMake 3.22.1, and SDK 34.
 These are the intended starting versions, not a claim of a successful Hero build.
 
+## Build Android
+
+After source generation:
+
+```sh
+cd android
+./gradlew assembleDebug
+```
+
+For a direct NDK CMake build, pass `ANDROID_ABI=arm64-v8a`,
+`ANDROID_PLATFORM=android-28`, `ANDROID_STL=c++_shared`,
+`CMAKE_BUILD_TYPE=RelWithDebInfo`, and the absolute `BMHERO_FILE_TO_C` path.
+`tools/apply_android_patches.py` runs automatically during Android configure
+and source preparation. It rejects dependency drift or conflicting local edits.
+
+A prebuilt native build can be packaged with `./gradlew -PprebuiltNative=true
+assembleDebug`. First place the optimized `libBMHero.so`, `libSDL2.so`, and
+NDK `libc++_shared.so` under `build-apk/staging/lib/arm64-v8a/` at repo root.
+This is the route used for the first APK after a direct CMake build. Desktop
+sources and executable entry remain intact; desktop builds were not tested.
+
 ## Verification performed
 
-Four host ROM-normalization/rejection tests pass. `git diff --check` passes.
-Native compilation, source generation with the real ROM, Android installation,
-and performance have **not** been verified. The initial workspace lacked CMake
-and the Android SDK/NDK; a CMake invocation returned `command not found`.
+- Seven host tests passed, including acceptance of the verified 12 MiB
+  upload. The real-ROM test is opt-in with `BMHERO_TEST_ROM`.
+- Java import harness passed raw, v64, n64 and ZIP imports, invalid/truncated
+  rejection and preservation of a previous valid import.
+- A C++ window-reference handoff regression failed with the original premature
+  release and passed after correcting the ownership transfer.
+- Host N64Recomp/RSPRecomp built at the pinned revision; game, audio microcode
+  and patch C sources generated successfully (upstream warnings remain).
+- NDK ARM64 native configure/build linked `libBMHero.so`; required JNI entry
+  points and `SDL_main` are exported, with only packaged or Android-system
+  shared library dependencies.
+- APK signature and ZIP integrity checks passed; ABI is arm64-v8a, launcher
+  and manifest are correct, fonts/controller assets are present, ROM absent.
+- Device behavior and 60 FPS are unverified. This is a test build.
+
+Android shell sources draw on Goemon's SDL 2.32.8 Java files; the SDL headers
+and native library are fetched from the same release. The Android frontend patch
+replaces desktop dialogs with JNI document picking and resolves paths under
+app-private storage. Imported ROM replacement is atomic after validation.

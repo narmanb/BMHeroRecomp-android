@@ -1,0 +1,40 @@
+plugins { id 'com.android.application' }
+def prebuiltNative = project.hasProperty("prebuiltNative")
+android {
+    namespace 'com.narmanb.bmhero'
+    compileSdk 34
+    ndkVersion '27.1.12297006'
+    defaultConfig {
+        applicationId 'com.narmanb.bmhero'
+        minSdk 28
+        targetSdk 34
+        versionCode 1
+        versionName '0.7.3-android.1'
+        ndk { abiFilters 'arm64-v8a' }
+        if (!prebuiltNative) externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=c++_shared', '-DANDROID_PLATFORM=android-28',
+                    "-DBMHERO_FILE_TO_C=${rootProject.file('../build-host-tools/file_to_c')}",
+                    '-DCMAKE_BUILD_TYPE=RelWithDebInfo'
+                targets 'BMHeroRecompiled'
+            }
+        }
+    }
+    buildTypes {
+        debug { debuggable true }
+        release { minifyEnabled false }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    if (!prebuiltNative) externalNativeBuild { cmake { path file('../../CMakeLists.txt'); version '3.22.1' } }
+    if (prebuiltNative) sourceSets.main.jniLibs.srcDirs = [rootProject.file("../build-apk/staging/lib")]
+    sourceSets.main.assets.srcDirs = ["${buildDir}/hero-assets"]
+}
+def stageHeroAssets = tasks.register('stageHeroAssets', Copy) {
+    into "${buildDir}/hero-assets"
+    into('assets') { from "${rootDir}/../assets" }
+    from "${rootDir}/../recompcontrollerdb.txt"
+}
+tasks.named('preBuild').configure { dependsOn stageHeroAssets }

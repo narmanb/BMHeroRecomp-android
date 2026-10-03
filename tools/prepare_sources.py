@@ -48,8 +48,8 @@ def main():
     parser.add_argument("--check-only", action="store_true", help="Validate without writing or generating anything")
     args = parser.parse_args()
     # Reject archives / accidentally selected large files before reading them.
-    if args.rom.stat().st_size != 16 * 1024 * 1024:
-        raise ValueError("Expected a 16 MiB Bomberman Hero US 1.0 ROM")
+    if args.rom.stat().st_size != 12 * 1024 * 1024:
+        raise ValueError("Expected a 12 MiB Bomberman Hero US 1.0 ROM")
     data = validate_rom(args.rom.read_bytes())
     if args.check_only:
         print("Verified Bomberman Hero US 1.0 ROM")
@@ -66,6 +66,8 @@ def main():
                  "lib/rt64/src/tools/file_to_c/file_to_c.cpp"):
         if not (ROOT / file).is_file():
             raise ValueError(f"Missing submodule input: {file}. Initialize recursive submodules first")
+
+    run([sys.executable, ROOT / "tools/apply_android_patches.py"])
 
     target = ROOT / "bmhero.z64"
     temporary = ROOT / "bmhero.z64.tmp"

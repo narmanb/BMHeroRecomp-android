@@ -1,0 +1,231 @@
+diff --git a/include/rt64_extended_gbi.h b/include/rt64_extended_gbi.h
+index 165a705..d387090 100644
+--- a/include/rt64_extended_gbi.h
++++ b/include/rt64_extended_gbi.h
+@@ -79,7 +79,8 @@
+ #define G_EX_MATRIX_FLOAT_V1            0x000030
+ #define G_EX_SETVERTEXSEGMENT_V1        0x000031
+ #define G_EX_SETTEXCOORDWRAPPOINT_V1    0x000032
+-#define G_EX_MAX                        0x000033
++#define G_EX_SETRECTASPECT_V1           0x000033
++#define G_EX_MAX                        0x000034
+ 
+ #define G_EX_ORIGIN_NONE            0x800
+ #define G_EX_ORIGIN_LEFT            0x0
+@@ -572,4 +573,10 @@ typedef union {
+         PARAM(wrapPointU, 16, 16) | PARAM(wrapPointV, 16, 0) \
+     )
+ 
++#define gEXSetRectAspect(cmd, aspect) \
++    G_EX_COMMAND1(cmd, \
++        PARAM(RT64_EXTENDED_OPCODE, 8, 24) | PARAM(G_EX_SETRECTASPECT_V1, 24, 0), \
++        PARAM(aspect, 2, 0) \
++    )
++
+ #endif // RT64_EXTENDED_GBI
+diff --git a/src/gbi/rt64_gbi_extended.cpp b/src/gbi/rt64_gbi_extended.cpp
+index 38e8088..20c0d4d 100644
+--- a/src/gbi/rt64_gbi_extended.cpp
++++ b/src/gbi/rt64_gbi_extended.cpp
+@@ -320,12 +320,17 @@ namespace RT64 {
+             state->rsp->setVertexSegmentV1(isEnabled, vertexElement, (*dl)->w0, (*dl)->w1);
+         }
+ 
+-        void setTexcoordWrapPointV1(State* state, DisplayList** dl) {
++        void setTexcoordWrapPointV1(State *state, DisplayList **dl) {
+             const int16_t wrapPointU = (*dl)->p1(16, 16);
+             const int16_t wrapPointV = (*dl)->p1(0, 16);
+             state->setTexcoordWrapPoint(wrapPointU, wrapPointV);
+         }
+ 
++        void setRectAspectV1(State *state, DisplayList **dl) {
++            const uint8_t aspect = (*dl)->p1(0, 2);
++            state->rdp->setRectAspect(aspect);
++        }
++
+         void noOpHook(State *state, DisplayList **dl) {
+             uint32_t magicNumber = (*dl)->p0(0, 24);
+             if (magicNumber == RT64_HOOK_MAGIC_NUMBER) {
+@@ -433,6 +438,7 @@ namespace RT64 {
+             Map[G_EX_MATRIX_FLOAT_V1] = &matrixFloatV1;
+             Map[G_EX_SETVERTEXSEGMENT_V1] = &setVertexSegmentV1;
+             Map[G_EX_SETTEXCOORDWRAPPOINT_V1] = &setTexcoordWrapPointV1;
++            Map[G_EX_SETRECTASPECT_V1] = &setRectAspectV1;
+             MapInitialized = true;
+         }
+     }
+diff --git a/src/hle/rt64_draw_call.h b/src/hle/rt64_draw_call.h
+index feab830..0e62be1 100644
+--- a/src/hle/rt64_draw_call.h
++++ b/src/hle/rt64_draw_call.h
+@@ -80,7 +80,6 @@ namespace RT64 {
+         uint16_t rectLeftOrigin;
+         uint16_t rectRightOrigin;
+         FixedRect scissorRect;
+-        uint8_t scissorMode;
+         uint16_t scissorLeftOrigin;
+         uint16_t scissorRightOrigin;
+         interop::ColorCombiner colorCombiner;
+@@ -91,9 +90,12 @@ namespace RT64 {
+         uint32_t tileCount;
+         uint32_t loadIndex;
+         uint32_t loadCount;
++        uint8_t rectAspect;
++        uint8_t scissorMode;
+         uint8_t textureOn;
+         uint8_t textureTile;
+         uint8_t textureLevels;
++        bool NoN;
+ 
+         // RSP specific parameters.
+         uint32_t geometryMode;
+@@ -102,7 +104,6 @@ namespace RT64 {
+         // GBI specific parameters.
+         uint32_t cullBothMask;
+         uint32_t shadingSmoothMask;
+-        bool NoN;
+ 
+         // GBI extended parameters.
+         DrawExtendedType extendedType;
+diff --git a/src/hle/rt64_rdp.cpp b/src/hle/rt64_rdp.cpp
+index d1a9fc9..ec617da 100644
+--- a/src/hle/rt64_rdp.cpp
++++ b/src/hle/rt64_rdp.cpp
+@@ -1063,6 +1063,10 @@ namespace RT64 {
+         extended.global.scissor = extAlignment;
+     }
+ 
++    void RDP::setRectAspect(uint8_t aspect) {
++        extended.global.rectAspect = aspect;
++    }
++
+     void RDP::forceUpscale2D(bool force) {
+         extended.drawExtendedFlags.forceUpscale2D = force;
+         state->updateDrawStatusAttribute(DrawAttribute::ExtendedFlags);
+@@ -1084,6 +1088,7 @@ namespace RT64 {
+         extended.drawExtendedFlags = {};
+         extended.global.rect = ExtendedAlignment();
+         extended.global.scissor = ExtendedAlignment();
++        extended.global.rectAspect = G_EX_ASPECT_AUTO;
+     }
+     
+     void RDP::drawTris(uint32_t triCount, const float *pos, const float *tc, const float *col, uint8_t tile, uint8_t levels) {
+@@ -1235,6 +1240,7 @@ namespace RT64 {
+         drawCall.rectDtdy = dtdy;
+         drawCall.rectLeftOrigin = extAlignment.leftOrigin;
+         drawCall.rectRightOrigin = extAlignment.rightOrigin;
++        drawCall.rectAspect = extended.global.rectAspect;
+ 
+         if (flushedState) {
+             state->loadDrawState();
+diff --git a/src/hle/rt64_rdp.h b/src/hle/rt64_rdp.h
+index d3efd62..84f4e7c 100644
+--- a/src/hle/rt64_rdp.h
++++ b/src/hle/rt64_rdp.h
+@@ -92,6 +92,7 @@ namespace RT64 {
+             struct {
+                 ExtendedAlignment rect;
+                 ExtendedAlignment scissor;
++                uint8_t rectAspect;
+             } global;
+ 
+             uint16_t scissorLeftOriginStack[RDP_EXTENDED_STACK_SIZE];
+@@ -194,6 +195,7 @@ namespace RT64 {
+         void fillRect(int32_t ulx, int32_t uly, int32_t lrx, int32_t lry, const ExtendedAlignment &extAlignment);
+         void setRectAlign(const ExtendedAlignment &extAlignment);
+         void setScissorAlign(const ExtendedAlignment &extAlignment);
++        void setRectAspect(uint8_t aspect);
+         void forceUpscale2D(bool force);
+         void forceTrueBilerp(uint8_t mode);
+         void forceScaleLOD(bool force);
+diff --git a/src/hle/rt64_rsp.cpp b/src/hle/rt64_rsp.cpp
+index d4d9883..ee2030b 100644
+--- a/src/hle/rt64_rsp.cpp
++++ b/src/hle/rt64_rsp.cpp
+@@ -325,9 +325,12 @@ namespace RT64 {
+         invMatrix = hlslpp::inverse(matrix);
+ 
+         rsp.extended.viewProjMatrix = hlslpp::mul(rsp.extended.viewMatrix, rsp.extended.projMatrix);
++        rsp.extended.viewProjRotationMatrix = hlslpp::float3x3(rsp.extended.viewProjMatrix);
+         rsp.extended.invViewProjMatrix = hlslpp::inverse(rsp.extended.viewProjMatrix);
+         rsp.projectionMatrixChanged = true;
+         rsp.modelViewProjChanged = true;
++        rsp.lightsChanged = true;
++        rsp.lookAtChanged = true;
+     }
+ 
+     void RSP::setProjectionMatrixFloat(uint32_t address) {
+@@ -593,11 +596,12 @@ namespace RT64 {
+                     }
+                     else {
+                         rspLight.posDir = {
+-                            static_cast<float>(light.dir.dirx),
+-                            static_cast<float>(light.dir.diry),
+-                            static_cast<float>(light.dir.dirz)
++                             static_cast<float>(light.dir.dirx),
++                             static_cast<float>(light.dir.diry),
++                             static_cast<float>(light.dir.dirz)
+                         };
+ 
++                        rspLight.posDir = hlslpp::mul(rspLight.posDir, extended.viewProjRotationMatrix);
+                         rspLight.kc = 0;
+                         rspLight.kl = 0;
+                         rspLight.kq = 0;
+@@ -639,8 +643,11 @@ namespace RT64 {
+         if (usesTextureGen) {
+             if (lookAtChanged) {
+                 auto &rspLookAtVector = workload.drawData.rspLookAt;
++                interop::RSPLookAt vertexLookAt = lookAt;
+                 vertexLookAtIndex = static_cast<uint32_t>(rspLookAtVector.size());
+-                rspLookAtVector.emplace_back(lookAt);
++                vertexLookAt.x = hlslpp::mul(vertexLookAt.x, extended.viewProjRotationMatrix);
++                vertexLookAt.y = hlslpp::mul(vertexLookAt.y, extended.viewProjRotationMatrix);
++                rspLookAtVector.emplace_back(vertexLookAt);
+                 lookAtChanged = false;
+             }
+ 
+@@ -1276,6 +1283,7 @@ namespace RT64 {
+         extended.viewMatrix = hlslpp::float4x4::identity();
+         extended.projMatrix = hlslpp::float4x4::identity();
+         extended.viewProjMatrix = hlslpp::float4x4::identity();
++        extended.viewProjRotationMatrix = hlslpp::float3x3::identity();
+         extended.invViewMatrix = hlslpp::float4x4::identity();
+         extended.invProjMatrix = hlslpp::float4x4::identity();
+         extended.invViewProjMatrix = hlslpp::float4x4::identity();
+diff --git a/src/hle/rt64_rsp.h b/src/hle/rt64_rsp.h
+index e3d289c..61bb3b1 100644
+--- a/src/hle/rt64_rsp.h
++++ b/src/hle/rt64_rsp.h
+@@ -219,6 +219,7 @@ namespace RT64 {
+             hlslpp::float4x4 viewMatrix;
+             hlslpp::float4x4 projMatrix;
+             hlslpp::float4x4 viewProjMatrix;
++            hlslpp::float3x3 viewProjRotationMatrix;
+             hlslpp::float4x4 invViewMatrix;
+             hlslpp::float4x4 invProjMatrix;
+             hlslpp::float4x4 invViewProjMatrix;
+diff --git a/src/hle/rt64_state.cpp b/src/hle/rt64_state.cpp
+index f9f0ad8..d249a97 100644
+--- a/src/hle/rt64_state.cpp
++++ b/src/hle/rt64_state.cpp
+@@ -106,6 +106,7 @@ namespace RT64 {
+         drawCall.rectDtdy = 0;
+         drawCall.rectLeftOrigin = G_EX_ORIGIN_NONE;
+         drawCall.rectRightOrigin = G_EX_ORIGIN_NONE;
++        drawCall.rectAspect = G_EX_ASPECT_AUTO;
+         drawCall.scissorRect.reset();
+         drawCall.scissorMode = 0;
+         drawCall.scissorLeftOrigin = G_EX_ORIGIN_NONE;
+diff --git a/src/render/rt64_framebuffer_renderer.cpp b/src/render/rt64_framebuffer_renderer.cpp
+index c8e04c3..20418cd 100644
+--- a/src/render/rt64_framebuffer_renderer.cpp
++++ b/src/render/rt64_framebuffer_renderer.cpp
+@@ -1754,7 +1754,7 @@ namespace RT64 {
+                                     coversScissorWidthMerged = (minMax.minUlx <= fbPair.scissorRect.ulx) && (minMax.maxLrx >= fbPair.scissorRect.lrx);
+                                 }
+                             }
+-                            if (tileCopiesUsed || coversScissorWidth || coversScissorWidthMerged) {
++                            if ((tileCopiesUsed || coversScissorWidth || coversScissorWidthMerged || call.callDesc.rectAspect == G_EX_ASPECT_STRETCH) && (call.callDesc.rectAspect != G_EX_ASPECT_ADJUST)) {
+                                 invRatioScale = 1.0f;
+                             }
+                             else {

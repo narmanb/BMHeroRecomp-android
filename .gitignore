@@ -91,3 +91,24 @@ gamecontrollerdb.txt
 
 # RSP Microcode recompiled output
 aspMain.cpp
+
+.superpowers/
+source-generation.log
+remaining-submodules.log
+
+*.deb
+rt64-android-submodules.log
+lib/rt64-untracked-backup/
+
+build-android*/
+configure-android.log
+build-android.log
+android/*bootstrap.log
+android/gradle-*.log
+
+build-apk/
+package-*.log
+
+*.apk
+core
+core.*

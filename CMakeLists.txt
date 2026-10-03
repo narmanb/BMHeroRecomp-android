@@ -15,6 +15,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 if (ANDROID)
     # Every static dependency linked into the SDLActivity shared library needs PIC.
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+    string(APPEND CMAKE_SHARED_LINKER_FLAGS " -Wl,-z,max-page-size=16384")
+    execute_process(COMMAND python3 "${CMAKE_SOURCE_DIR}/tools/apply_android_patches.py" RESULT_VARIABLE patch_result)
+    if (NOT patch_result EQUAL 0)
+        message(FATAL_ERROR "Android dependency patches failed")
+    endif()
     # Code generation runs on the host before Gradle/NDK compilation.
     foreach(generated_file
         RecompiledFuncs/recomp_overlays.inl
@@ -31,6 +36,9 @@ if (ANDROID)
     endif()
     set(BMHERO_EMBED_TOOL "${BMHERO_FILE_TO_C}")
     set(RT64_FILE_TO_C "${BMHERO_FILE_TO_C}")
+    # RT64 shader helpers execute from RecompFrontend's CMake scope too.
+    set(FILE_TO_C "${BMHERO_FILE_TO_C}")
+    set(FILE_TO_C_DEP "${BMHERO_FILE_TO_C}")
 else()
     set(BMHERO_EMBED_TOOL file_to_c)
 endif()
@@ -72,6 +80,21 @@ if (RECOMP_FLATPAK)
     add_compile_definitions(RECOMP_FLATPAK)
 endif()
 
+if (ANDROID)
+    include(FetchContent)
+    # RT64 owns the Vulkan surface. SDL's EGL resume path must stay disabled.
+    set(SDL_OPENGL OFF CACHE BOOL "" FORCE)
+    set(SDL_OPENGLES OFF CACHE BOOL "" FORCE)
+    set(SDL_VULKAN ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(freetype GIT_REPOSITORY https://github.com/freetype/freetype.git GIT_TAG VER-2-13-3 GIT_SHALLOW TRUE)
+    FetchContent_MakeAvailable(freetype)
+    add_library(Freetype::Freetype ALIAS freetype)
+endif()
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/rt64 ${CMAKE_BINARY_DIR}/rt64)
 
 set(BUILD_SHARED_LIBS OFF)
@@ -166,6 +189,8 @@ endif()
 if (ANDROID)
     add_library(BMHeroRecompiled SHARED)
     set_target_properties(BMHeroRecompiled PROPERTIES OUTPUT_NAME BMHero)
+    target_sources(BMHeroRecompiled PRIVATE src/main/android_glue.cpp)
+    target_link_libraries(BMHeroRecompiled PRIVATE SDL2 android log dl)
 else()
     add_executable(BMHeroRecompiled)
 endif()
@@ -353,7 +378,7 @@ else()
             set(SPIRVCROSS "DYLD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/spirv-cross/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64//src/contrib/spirv-cross/bin/x64/spirv-cross")
         endif()
     else()
-        if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
+        if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64|amd64|AMD64")
             set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/x64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/x64/dxc-linux")
         else()
             set (DXC "LD_LIBRARY_PATH=${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/lib/arm64" "${PROJECT_SOURCE_DIR}/lib/rt64/src/contrib/dxc/bin/arm64/dxc-linux")
@@ -365,6 +390,10 @@ set(RECOMP_FRONTEND_N64MODERNRUNTIME_PATH ${CMAKE_SOURCE_DIR}/lib/N64ModernRunti
 set(RECOMP_FRONTEND_RT64_PATH ${CMAKE_SOURCE_DIR}/lib/rt64)
 
 add_subdirectory(${CMAKE_SOURCE_DIR}/lib/RecompFrontend)
+if (ANDROID)
+    target_include_directories(recompui PRIVATE ${CMAKE_SOURCE_DIR}/include)
+    target_include_directories(BMHeroRecompiled PRIVATE $<TARGET_PROPERTY:SDL2,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
 
 target_link_libraries(BMHeroRecompiled PRIVATE
     PatchesLib
@@ -374,8 +403,10 @@ target_link_libraries(BMHeroRecompiled PRIVATE
     librecomp
     ultramodern
     rt64
-    nfd
 )
+if (NOT ANDROID)
+    target_link_libraries(BMHeroRecompiled PRIVATE nfd)
+endif()
 
 # Embed all .nrm files in the "mods" directory
 file(GLOB NRM_FILES "${CMAKE_SOURCE_DIR}/mods/*.nrm")
